@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>健康檢查表 — 林醫院</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  .wrap{max-width:640px;margin:0 auto;padding:0 14px 120px}
+  header{background:var(--pri);color:#fff;padding:18px 16px 16px;text-align:center}
+  header h1{font-size:22px}
+  header p{margin:4px 0 0;opacity:.85;font-size:14px}
+  .pick{display:block;width:100%;text-align:left;background:#fff;border:2px solid var(--line);border-radius:16px;padding:18px;margin:12px 0;font-size:20px;font-weight:800;color:var(--ink)}
+  .pick small{display:block;font-size:15px;font-weight:500;color:var(--soft);margin-top:4px}
+  .pick:active{border-color:var(--pri);background:var(--pri-bg)}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:10px;justify-content:center}
+  .bar .btn{flex:1;max-width:320px}
+  .formname{font-size:15px;color:var(--soft);margin:14px 2px 0;display:flex;justify-content:space-between;align-items:center}
+  .done{text-align:center;padding:50px 10px}
+  .done .ok{font-size:64px;color:var(--pri)}
+  .done h2{font-size:24px;margin:8px 0}
+  .done p{font-size:18px;color:var(--soft)}
+  .done .no{font-size:40px;font-weight:900;color:var(--ink);letter-spacing:2px}
+  .missing .in,.missing .opt{border-color:var(--bad)!important}
+  .qrbox{background:#fff;padding:10px;border-radius:12px;margin:14px auto;max-width:440px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+  .qrbox svg{display:block;width:100%;height:auto}
+  .done .tip{font-size:15px;color:var(--soft)}
+</style>
+</head>
+<body>
+<header><h1>林醫院　健康檢查表</h1><p>請填寫第一頁，送出後告知櫃台人員</p></header>
+<div class="wrap" id="app"></div>
+<script src="forms.js"></script>
+<script src="qrcode.js"></script>
+<script>window.CK_INTAKE = "http://192.168.162.158:5003";</script>
+<script>
+(function () {
+  var app = document.getElementById("app"), CK = window.CK, TODAY = null, DRAFT = "ck_draft_v1", DONE = "ck_done_v1";
+  // Public (internet) copy: answers are not sent anywhere; they are packed into a QR code
+  // that staff scan with a phone on the hospital network. Set by build_public.py.
+  var INTAKE = window.CK_INTAKE || "";
+  if (INTAKE) {
+    document.querySelector("header p").textContent = "填寫第一頁，完成後出示 QR Code 給櫃台人員掃描";
+  }
+  function store(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function load(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }
+
+  function choose() {
+    window.scrollTo(0, 0);
+    var h = '<p class="hint" style="margin-top:16px;font-size:16px">請選擇您要做的體檢表（不確定請問櫃台）：</p>';
+    ["general", "cpc", "food"].forEach(function (k) {
+      var f = CK.FORMS[k];
+      h += '<button class="pick" data-form="' + k + '">' + f.short + "<small>" + CK.esc(f.title) + "<br>" + CK.esc(f.desc) + "</small></button>";
+    });
+    app.innerHTML = h;
+    var d = load(DRAFT);
+    if (d && d.form_type) fill(d.form_type, d.page1);
+  }
+
+  function fill(formKey, data) {
+    window.scrollTo(0, 0);
+    var f = CK.FORMS[formKey];
+    app.innerHTML = '<div class="formname"><span>' + CK.esc(f.title) + '</span><button class="mini" id="chg">更換表單</button></div>' +
+      '<form id="f" autocomplete="off">' + CK.page1Html(formKey) + "</form>" +
+      '<div class="bar"><button class="btn" id="send">送出</button></div>';
+    var form = document.getElementById("f");
+    CK.wireExclusive(form);
+    if (!data && TODAY) data = { exam_y: TODAY[0], exam_m: TODAY[1], exam_d: TODAY[2] };
+    CK.setValues(form, data);
+    var save = function () { store(DRAFT, { form_type: formKey, page1: CK.getValues(form) }); };
+    form.addEventListener("input", save);
+    form.addEventListener("change", save);
+    save();
+    document.getElementById("chg").onclick = function () { store(DRAFT, null); choose(); };
+    document.getElementById("send").onclick = function () { send(formKey, form); };
+  }
+
+  function mark(form, name, bad) {
+    var el = form.querySelector('[name="' + name + '"]');
+    var box = el && (el.closest(".fld") || el.closest(".ymd"));
+    if (box) box.classList.toggle("missing", bad);
+    return bad;
+  }
+
+  function send(formKey, form) {
+    var v = CK.getValues(form), miss = [];
+    if (mark(form, "name", !v.name)) miss.push("姓名");
+    if (mark(form, "sex", !v.sex)) miss.push("性別");
+    if (mark(form, "phone", !v.phone)) miss.push("電話");
+    if (mark(form, "id_no", !v.id_no)) miss.push("身分證字號");
+    if (mark(form, "birth_y", !(v.birth_y && v.birth_m && v.birth_d))) miss.push("出生日期");
+    if (v.birth_y && +v.birth_y > 200) { mark(form, "birth_y", true); alert("出生日期請填民國年（例如 1985 年請填 74）"); return; }
+    if (miss.length) {
+      alert("請填寫：" + miss.join("、"));
+      var first = form.querySelector(".missing");
+      if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (INTAKE) return makeCode(formKey, v);
+    if (!confirm("確認送出？送出後如需修改請告知櫃台人員。")) return;
+    var btn = document.getElementById("send");
+    btn.disabled = true; btn.textContent = "送出中…";
+    var x = new XMLHttpRequest();
+    x.open("POST", "/api/submit");
+    x.setRequestHeader("Content-Type", "application/json");
+    x.onload = function () {
+      var r = {};
+      try { r = JSON.parse(x.responseText); } catch (e) {}
+      if (x.status === 200 && r.ok) { store(DRAFT, null); done(v.name, r.id); }
+      else { alert(r.error || "送出失敗，請再試一次或告知櫃台"); btn.disabled = false; btn.textContent = "送出"; }
+    };
+    x.onerror = function () { alert("無法連線，請確認已連上院內 Wi-Fi 後再試一次"); btn.disabled = false; btn.textContent = "送出"; };
+    x.send(JSON.stringify({ form_type: formKey, page1: v }));
+  }
+
+  function done(name, id) {
+    window.scrollTo(0, 0);
+    app.innerHTML = '<div class="done"><div class="ok">✓</div><h2>已送出，謝謝您！</h2>' +
+      "<p>" + CK.esc(name) + "　您的序號</p><div class=\"no\">" + id + "</div>" +
+      "<p>請告知櫃台人員您的姓名，<br>並依指示進行檢查。</p>" +
+      '<p style="margin-top:40px"><button class="btn ghost" id="again">幫另一位填寫</button></p></div>';
+    document.getElementById("again").onclick = choose;
+  }
+
+  // ---- QR hand-over (public copy only)
+  function b64u(bytes) {
+    var s = "";
+    for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function pack(obj) {
+    var bytes = new TextEncoder().encode(JSON.stringify(obj));
+    var plain = function () { return "j" + b64u(bytes); };
+    if (!window.CompressionStream) return Promise.resolve(plain());
+    try {
+      var cs = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+      return new Response(cs).arrayBuffer().then(function (buf) { return "z" + b64u(new Uint8Array(buf)); }, plain);
+    } catch (e) { return Promise.resolve(plain()); }
+  }
+  function compact(v) {           // drop empty answers to keep the QR code small
+    var o = {};
+    Object.keys(v).forEach(function (k) {
+      var x = v[k];
+      if (x === "" || x == null || (Array.isArray(x) && !x.length)) return;
+      o[k] = x;
+    });
+    return o;
+  }
+  function makeCode(formKey, v) {
+    var rid = (crypto.getRandomValues ? Array.from(crypto.getRandomValues(new Uint8Array(6)), function (b) { return (b + 256).toString(16).slice(1); }).join("") : String(Date.now()));
+    pack({ v: 1, t: formKey, r: rid, p: compact(v) }).then(function (data) {
+      var url = INTAKE.replace(/\/+$/, "") + "/in#" + data;
+      store(DONE, { form_type: formKey, name: v.name, url: url });
+      showCode();
+    });
+  }
+  function showCode() {
+    var d = load(DONE);
+    if (!d) return choose();
+    window.scrollTo(0, 0);
+    var svg;
+    try { svg = QR.svg(d.url, 4); } catch (e) { svg = "<p>資料太多，無法產生 QR Code，請告知櫃台人員。</p>"; }
+    app.innerHTML = '<div class="done" style="padding-top:18px"><h2>' + CK.esc(d.name) + "　" + CK.esc(CK.FORMS[d.form_type].short) + "</h2>" +
+      "<p><b>請將此畫面出示給櫃台人員掃描</b></p>" +
+      '<div class="qrbox">' + svg + "</div>" +
+      '<p class="tip">您的資料只存在這支手機上，掃描後才會進入醫院系統。<br>掃描不到時請把螢幕調亮。</p>' +
+      '<p style="margin-top:24px;display:flex;gap:10px;justify-content:center"><button class="btn ghost" id="edit">返回修改</button>' +
+      '<button class="btn ghost" id="again">幫另一位填寫</button></p></div>';
+    document.getElementById("edit").onclick = function () { store(DONE, null); var dr = load(DRAFT); fill(dr ? dr.form_type : d.form_type, dr ? dr.page1 : null); };
+    document.getElementById("again").onclick = function () {
+      if (!confirm("清除這份資料並重新填寫？（櫃台已掃描過才清除）")) return;
+      store(DONE, null); store(DRAFT, null); choose();
+    };
+  }
+
+  app.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-form]");
+    if (b) fill(b.getAttribute("data-form"));
+  });
+
+  if (INTAKE) {
+    var t = new Date();
+    TODAY = [t.getFullYear() - 1911, t.getMonth() + 1, t.getDate()];
+    if (load(DONE)) showCode(); else choose();
+    return;
+  }
+  var x = new XMLHttpRequest();
+  x.open("GET", "/api/today");
+  x.onload = function () { try { TODAY = JSON.parse(x.responseText).roc; } catch (e) {} choose(); };
+  x.onerror = choose;
+  x.send();
+})();
+</script>
+</body>
+</html>
