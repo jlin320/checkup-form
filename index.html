@@ -42,7 +42,7 @@
   // that staff scan with a phone on the hospital network. Set by build_public.py.
   var INTAKE = window.CK_INTAKE || "";
   if (INTAKE) {
-    document.querySelector("header p").textContent = "填寫第一頁，完成後出示 QR Code 給櫃台人員掃描";
+    document.querySelector("header p").textContent = "填寫第一頁，完成後出示 QR Code 給櫃台或體檢護理人員掃描";
   }
   function store(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   function load(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }
@@ -163,7 +163,7 @@
     var svg;
     try { svg = QR.svg(d.url, 4); } catch (e) { svg = "<p>資料太多，無法產生 QR Code，請告知櫃台人員。</p>"; }
     app.innerHTML = '<div class="done" style="padding-top:18px"><h2>' + CK.esc(d.name) + "　" + CK.esc(CK.FORMS[d.form_type].short) + "</h2>" +
-      "<p><b>請將此畫面出示給櫃台人員掃描</b></p>" +
+      "<p><b>請將此畫面出示給櫃台或體檢護理人員掃描</b></p>" +
       '<div class="qrbox">' + svg + "</div>" +
       '<p class="tip">您的資料只存在這支手機上，掃描後才會進入醫院系統。<br>掃描不到時請把螢幕調亮。</p>' +
       '<p style="margin-top:24px;display:flex;gap:10px;justify-content:center"><button class="btn ghost" id="edit">返回修改</button>' +
